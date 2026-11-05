@@ -6,8 +6,19 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { readDatabaseUrl } from './config.js';
 import { installationMetadata } from './schema.js';
+import { PostgresWorkflowStore } from './workflows.js';
+import { PostgresKnowledgeStore } from './knowledge.js';
+import { PostgresGraphStore } from './graph.js';
+import { PostgresCoverageStore } from './coverage.js';
+import { PostgresPlanStore } from './plans.js';
+import { PostgresArtifactCatalog } from './artifacts.js';
+import { PostgresActionStore } from './actions.js';
+import { PostgresMonitor } from './monitor.js';
+import { PostgresLifecycle } from './lifecycle.js';
+import { PostgresRetention } from './retention.js';
 
 export { readDatabaseUrl } from './config.js';
+export { DeliveryConflict } from './workflows.js';
 
 export function createDatabase(connectionString: string) {
   const pool = new pg.Pool({
@@ -24,8 +35,21 @@ export function createDatabase(connectionString: string) {
     console.error('Database idle connection failed.');
   });
   const db = drizzle(pool);
+  const knowledge = new PostgresKnowledgeStore(pool);
+  const graph = new PostgresGraphStore(pool);
+  const plans = new PostgresPlanStore(pool, knowledge, graph);
 
   return {
+    workflows: new PostgresWorkflowStore(pool),
+    knowledge,
+    coverage: new PostgresCoverageStore(pool, knowledge),
+    graph,
+    plans,
+    actions: new PostgresActionStore(pool, plans),
+    monitor: new PostgresMonitor(pool, graph),
+    lifecycle: new PostgresLifecycle(pool),
+    retention: new PostgresRetention(pool),
+    artifacts: new PostgresArtifactCatalog(pool, knowledge),
     async migrate(): Promise<void> {
       await migrate(db, {
         migrationsFolder: fileURLToPath(

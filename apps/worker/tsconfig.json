@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../../packages/policy" },
+    { "path": "../api" },
+    { "path": "../../packages/executor" },
+    { "path": "../../packages/coverage" },
+    { "path": "../../packages/intelligence" },
+    { "path": "../../packages/integrations" },
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/database" }
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

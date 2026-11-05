@@ -3,11 +3,18 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@cai/api": ["./apps/api/src/app.ts"],
+      "@cai/executor": ["./packages/executor/src/index.ts"],
+      "@cai/policy": ["./packages/policy/src/index.ts"],
+      "@cai/coverage": ["./packages/coverage/src/index.ts"],
+      "@cai/intelligence": ["./packages/intelligence/src/index.ts"],
+      "@cai/integrations": ["./packages/integrations/src/index.ts"],
       "@cai/contracts": ["./packages/contracts/src/index.ts"],
       "@cai/database": ["./packages/database/src/index.ts"]
     }
   },
   "include": [
+    "fixtures/**/*.ts",
     "apps/**/*.ts",
     "packages/**/*.ts",
     "tests/**/*.ts",

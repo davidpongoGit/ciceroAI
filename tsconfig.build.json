@@ -1,8 +1,14 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/executor" },
+    { "path": "./packages/policy" },
+    { "path": "./packages/coverage" },
+    { "path": "./packages/intelligence" },
+    { "path": "./packages/integrations" },
     { "path": "./packages/contracts" },
     { "path": "./packages/database" },
-    { "path": "./apps/api" }
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" }
   ]
 }

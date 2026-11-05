@@ -10,6 +10,9 @@
     }
   },
   "dependencies": {
+    "@cai/coverage": "0.0.0",
+    "@cai/policy": "0.0.0",
+    "@cai/contracts": "0.0.0",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1",
     "zod": "4.6.7"

@@ -3,8 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    }
+  },
   "dependencies": {
+    "@cai/executor": "0.0.0",
     "@cai/contracts": "0.0.0",
+    "@cai/database": "0.0.0",
+    "@cai/policy": "0.0.0",
     "fastify": "5.12.8",
     "zod": "4.6.7"
   }

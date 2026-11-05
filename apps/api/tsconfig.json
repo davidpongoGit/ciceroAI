@@ -6,7 +6,12 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../../packages/contracts" }],
+  "references": [
+    { "path": "../../packages/executor" },
+    { "path": "../../packages/policy" },
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/database" }
+  ],
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

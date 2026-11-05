@@ -1,0 +1,17 @@
+{
+  "name": "@cai/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cai/api": "0.0.0",
+    "@cai/executor": "0.0.0",
+    "@cai/coverage": "0.0.0",
+    "@cai/policy": "0.0.0",
+    "zod": "4.6.7",
+    "@cai/intelligence": "0.0.0",
+    "@cai/integrations": "0.0.0",
+    "@cai/contracts": "0.0.0",
+    "@cai/database": "0.0.0"
+  }
+}

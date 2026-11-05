@@ -1,5 +1,10 @@
 # Implementation status
 
+Historical M0 record below. Current sequential implementation and executed evidence
+through M8 are recorded in [milestones.md](milestones.md) and the root README.
+The founder authorised continuing without milestone approval pauses on 5 November 2026. PostgreSQL and the pinned runtime have since been executed; Docker remains
+unavailable. Do not interpret the old M0-only limits below as the current code state.
+
 ## M0 — implementation ready for review; acceptance gate incomplete
 
 Observed on 4 November 2026, Windows PowerShell, Node **24.16.0**, npm **12.0.1**.

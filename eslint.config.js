@@ -8,6 +8,8 @@ export default tseslint.config(
       '**/drizzle/meta/**',
       'coverage/**',
       'artifacts/**',
+      'runtime-data/**',
+      'backups/**',
     ],
   },
   js.configs.recommended,
@@ -21,5 +23,9 @@ export default tseslint.config(
       },
     },
   },
-  { files: ['**/*.js'], ...tseslint.configs.disableTypeChecked },
+  {
+    files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: { globals: { process: 'readonly' } },
+  },
 );
