@@ -14,6 +14,11 @@ not been demonstrated. See [milestone evidence](docs/milestones.md) and
 Follow the [step-by-step M0–M8 test guide](docs/test-guide-m0-m8.md) for setup,
 milestone checks, expected results, manual dashboard/API checks and recovery drills.
 
+For a single numbered walkthrough, use the
+[manual end-to-end validation instructions](docs/manual-e2e-validation.md): normal
+dashboard entry, readiness/history, approval/revocation, restart persistence,
+synthetic publication receipts and expected denials.
+
 The founder authorised continued sequential building on 5 November 2026. Earlier
 M0 stop notes are historical. [Vision.md](Vision.md), [Agent.md](Agent.md),
 [AGENTS.md](AGENTS.md) and [First-Codex-Prompt.md](First-Codex-Prompt.md) remain intact.
