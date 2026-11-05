@@ -1,0 +1,11 @@
+{
+  "name": "@cai/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cai/contracts": "0.0.0",
+    "fastify": "5.12.8",
+    "zod": "4.6.7"
+  }
+}

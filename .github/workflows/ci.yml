@@ -1,0 +1,53 @@
+name: M0 checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: m0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install --global npm@12.0.1
+      - run: npm ci
+      - run: npm run check
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Synthetic credentials valid only inside this ephemeral CI job.
+      DATABASE_URL: postgresql://cai_ci:synthetic_ci_only@127.0.0.1:5432/cai_ci
+    services:
+      postgres:
+        image: postgres:18.6-bookworm
+        env:
+          POSTGRES_USER: cai_ci
+          POSTGRES_DB: cai_ci
+          POSTGRES_PASSWORD: synthetic_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cai_ci -d cai_ci"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install --global npm@12.0.1
+      - run: npm ci
+      - run: npm run test:integration

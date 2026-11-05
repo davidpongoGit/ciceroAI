@@ -1,0 +1,50 @@
+{
+  "name": "cicero-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@12.0.1",
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "npm": ">=12 <13"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run build && vitest run",
+    "test:integration": "npm run build && node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "dev": "npm run build && node --env-file-if-exists=.env --import tsx --watch apps/api/src/server.ts",
+    "start": "node --env-file-if-exists=.env apps/api/dist/server.js",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
+    "db:generate": "drizzle-kit generate --config packages/database/drizzle.config.ts",
+    "db:migrate": "npm run build && node --env-file-if-exists=.env packages/database/dist/cli.js migrate",
+    "db:smoke": "npm run build && node --env-file-if-exists=.env packages/database/dist/cli.js smoke"
+  },
+  "overrides": {
+    "minimatch": "11.0.1",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "5.1.0"
+  }
+}

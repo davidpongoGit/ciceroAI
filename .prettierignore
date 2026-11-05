@@ -1,0 +1,13 @@
+AGENTS.md
+Agent.md
+Vision.md
+First-Codex-Prompt.md
+package-lock.json
+node_modules
+dist
+coverage
+artifacts
+backups
+runtime-data
+*.tsbuildinfo
+packages/database/drizzle/meta
