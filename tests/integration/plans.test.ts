@@ -157,6 +157,47 @@ describe('M6 persisted exact-plan approvals and server-side permissions', () => 
       });
       expect(overview.statusCode).toBe(200);
       expect(overview.json<{ scope: unknown }>().scope).toEqual(fixture.scope);
+      const headers = { authorization: `Bearer ${token}` };
+      const evidence = await app.inject({
+        url: `/api/reports/${fixture.assessmentId}`,
+        headers,
+      });
+      expect(evidence.statusCode).toBe(200);
+      const detail = evidence.json<{
+        report: { state: string };
+        features: { id: string; history: unknown[] }[];
+        runs: unknown[];
+      }>();
+      expect(detail.report.state).toBe('assessment_ready');
+      expect(detail.features.map((item) => item.id)).toEqual([
+        fixture.featureId,
+      ]);
+      expect(detail.features[0]?.history.length).toBeGreaterThan(0);
+      expect(detail.runs).toEqual([]);
+      const readiness = await app.inject({
+        url: `/api/features/${fixture.featureId}/readiness`,
+        headers,
+      });
+      expect(readiness.json<{ appSha: string }>().appSha).toBe(
+        fixture.pr.headSha,
+      );
+      const other = await seedReadyAssessment(database);
+      expect(
+        (
+          await app.inject({
+            url: `/api/reports/${other.assessmentId}`,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await app.inject({
+            url: `/api/features/${other.featureId}/readiness`,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
       expect(
         Number(
           overview.json<{
@@ -174,6 +215,15 @@ describe('M6 persisted exact-plan approvals and server-side permissions', () => 
           })
         ).statusCode,
       ).toBe(403);
+      await database.graph.revokeSource(fixture.scope, 'jira:DEMO-1');
+      expect(
+        (
+          await app.inject({
+            url: `/api/reports/${fixture.assessmentId}`,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
     } finally {
       await app.close();
     }

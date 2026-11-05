@@ -155,6 +155,20 @@ No authentication cookie or CORS grant exists, and the UI cannot choose another
 organisation. This is not a multi-user production identity/RBAC implementation.
 No HTTP endpoint runs arbitrary code or merges a repository.
 
+The dashboard now displays a requirement and assessed application revision with a
+plain-language Playwright E2E readiness verdict, independent of `assessment_ready`.
+Inspect a row for code/environment/data blockers, reconstructed prerequisite
+history and recorded runs labelled by origin. Missing execution evidence and
+unmeasured coverage are explicit. Current readiness uses the existing scoped
+feature endpoint and is not transferred to a different assessed revision. See
+[readiness display evidence](docs/milestones.md#readiness-display-milestone).
+
+The product publication boundary is test-only PRs/MRs in a separately configured
+Playwright automation repository. Application code, developer PRs/MRs and
+requirements are read inputs; developers review, approve and merge in the VCS.
+The readiness view itself does not publish. The explicit publication command is
+described below and remains disabled until separately configured.
+
 ```sh
 npm run worker -- --once
 npm run worker
@@ -250,6 +264,34 @@ copied/checksummed an artifact. This is an **application logical backup**, not W
 instance-role/configuration backup or a production recovery guarantee. Object bytes
 must be backed up separately from the manifest. Live deletion preserves minimal
 receipts; retained backups have a separate purge schedule.
+
+## Test-only publication to a separate automation repository
+
+Plans can bind a separate GitHub automation repository, its independent base SHA
+and an exact new test path. Publication rechecks the approved plan, source
+freshness, target identity and draft checksum; it never writes application code,
+updates existing tests or merges. The dashboard displays the destination before
+approval. Approval alone sends no VCS request.
+
+Run the complete **synthetic** publication/reconciliation demonstration on Windows:
+
+```powershell
+powershell -NoProfile -File scripts/local-postgres.ps1 publish
+```
+
+This runs `npm run demo:publish`, creates a fresh local synthetic scope and updates
+the latest `demo.*` files. It executes the owned browser fixture, simulates three
+automation-repository writes, persists receipts and reconciles a repeat without
+further writes. `externalPullRequest` and `realPrCreated` remain false. Restart an
+already-running demo API with the latest generated configuration afterward.
+
+Live publication is an explicit `npm run publish:test -- <plan-id> <draft-artifact-id>`
+command requiring `PUBLISH_ENABLED=true`, a separate authorised automation token,
+matching destination configuration and an approved target-bound plan. It was not
+exercised against GitHub. No publisher daemon is enabled. See the
+[publication runbook](docs/runbooks/test-publication.md) and
+[ADR 0005](docs/adr/0005-separate-automation-publication.md) for setup, test commands,
+recovery and the remaining live-provider gates.
 
 ## Module and trust boundaries
 

@@ -107,6 +107,14 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions> = (
         return report
           ? {
               ...report,
+              features: await database.graph.assessmentFeatures(
+                principal.scope,
+                request.params.id,
+              ),
+              runs: await database.coverage.recordedRuns(
+                principal.scope,
+                request.params.id,
+              ),
               artifacts: await database.artifacts.list(
                 principal,
                 z.uuid().parse(request.params.id),

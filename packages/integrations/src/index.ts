@@ -3,6 +3,7 @@ import { ScopeSchema, ShaSchema, type Scope } from '@cai/contracts';
 import { IntegrationError, ReadOnlyHttp } from './http.js';
 export * from './http.js';
 export * from './publisher.js';
+export * from './synthetic-publication.js';
 
 export const ChangedFileSchema = z.object({
   path: z.string().min(1).max(500),

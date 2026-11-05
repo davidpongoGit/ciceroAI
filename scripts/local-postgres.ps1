@@ -1,4 +1,4 @@
-param([ValidateSet('start', 'stop', 'test', 'e2e','demo')][string]$Action = 'start')
+param([ValidateSet('start', 'stop', 'test', 'e2e','demo','publish')][string]$Action = 'start')
 $ErrorActionPreference = 'Stop'
 $workspacePath = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location -LiteralPath $workspacePath
@@ -33,8 +33,8 @@ if ($LASTEXITCODE -ne 0) {
   if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL startup failed; inspect the ignored local log.' }
 }
 Write-Output 'Local PostgreSQL ready on 127.0.0.1:55432. Credentials remain in ignored runtime-data.'
-if ($Action -eq 'test' -or $Action -eq 'e2e' -or $Action -eq 'demo') {
+if ($Action -eq 'test' -or $Action -eq 'e2e' -or $Action -eq 'demo' -or $Action -eq 'publish') {
   $env:DATABASE_URL = ([System.IO.File]::ReadAllText($envPath).Trim() -replace '^DATABASE_URL=', '')
-  if ($Action -eq 'demo') { npm run demo } elseif ($Action -eq 'e2e') { npm run test:e2e } else { npm run test:integration }
+  if ($Action -eq 'demo') { npm run demo } elseif ($Action -eq 'publish') { npm run demo:publish } elseif ($Action -eq 'e2e') { npm run test:e2e } else { npm run test:integration }
   exit $LASTEXITCODE
 }

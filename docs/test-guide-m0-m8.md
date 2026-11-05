@@ -25,8 +25,8 @@ A test can be **observed passing against a simulated provider**. That proves the
 adapter's tested logic, not the commercial provider's behaviour. Passing software
 tests is also different from verifying customer acceptance criteria.
 
-The checked-in suites currently contain **48 unit/transport checks, 15 PostgreSQL
-integration checks and 2 browser checks**. Compare with your actual output; do not
+The checked-in suites currently contain **63 unit/transport checks, 18 PostgreSQL
+integration checks and 3 browser checks**. Compare with your actual output; do not
 use these numbers as a substitute for inspecting failures or future changes.
 `npm run check` does **not** include integration or browser suites.
 
@@ -151,9 +151,9 @@ $LASTEXITCODE
 
 | Command                | Required outcome                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------ |
-| `npm run check`        | Formatting, lint with zero warnings, strict typecheck, 48 unit/transport tests and build pass; exit 0. |
-| Database helper `test` | 6 integration files / 15 tests pass using real PostgreSQL; exit 0.                                     |
-| Database helper `e2e`  | 2 files / 2 browser tests pass; exit 0.                                                                |
+| `npm run check`        | Formatting, lint with zero warnings, strict typecheck, 63 unit/transport tests and build pass; exit 0. |
+| Database helper `test` | 7 integration files / 18 tests pass using real PostgreSQL; exit 0.                                     |
+| Database helper `e2e`  | 2 files / 3 browser tests pass; exit 0.                                                                |
 
 The browser suite deliberately runs a generated assertion against both a fixed
 and a broken checkout. The **inner Playwright run must fail on the broken build**;
@@ -512,7 +512,8 @@ an old/mismatched green result. The dashboard's aggregate coverage remains
    **Authentication required.** and no protected records loaded.
 3. Enter the generated correct token and connect. Expect records for repository
    101, three assessment rows in an untouched demo, visible `not measured`
-   metrics and an **Inspect** button exposing source-backed report JSON.
+   metrics and an **Inspect** button exposing the requirement, assessed revision,
+   readiness blockers, recorded results and reconstructed prerequisite history.
 4. Find the `create_pr` plan whose ID equals `$testSummary.review.planId`. Inspect
    its application SHA, test revision, draft hash, scope, budget and operation.
    Click **Approve for 5 minutes**; expect `approved`. Then click **Revoke**;
@@ -534,8 +535,12 @@ an old/mismatched green result. The dashboard's aggregate coverage remains
    node --env-file=runtime-data/local-postgres.env node_modules/vitest/vitest.mjs run --config vitest.e2e.config.ts tests/e2e/dashboard.test.ts
    ```
 
-   Expect 1 pass, no page errors and ignored `artifacts/dashboard.png`. This
-   test seeds its own plan and does not depend on your manual approval state.
+   Expect 2 passes, no page errors and ignored `artifacts/dashboard.png` plus
+   `artifacts/readiness-regression.png`. These tests seed their own records and
+   do not depend on your manual approval state. The readiness regression keeps
+   completed analysis separate from code/environment prerequisites, exercises
+   missing execution evidence and a seeded synthetic result, and refuses to
+   transfer readiness to a different application revision.
 
 **Pass:** the server enforces policy independently of buttons, and browser
 approval/revocation persists. The current UI is a local Fastify HTML dashboard,
@@ -549,7 +554,7 @@ not the envisioned React/enterprise identity implementation.
    npm test -- packages/executor/src/executor.test.ts packages/integrations/src/publisher.test.ts
    ```
 
-   Expect 3 passing tests. Object scope/checksum mismatch must be rejected.
+   Expect 18 passing tests. Object scope/checksum mismatch must be rejected.
    Untrusted execution must throw **No host fallback**. The publisher must limit
    writes to its planned branch/test file/draft PR and reconcile a repeat request
    through the fake transport, without repeating writes.
@@ -600,6 +605,12 @@ artifact adapter is cleartext development storage; no S3 backend was exercised.
 An untrusted request's rejection is a passing fail-closed check, **not proof of a
 working sandbox**. Do not execute customer PR code to test this prototype.
 `realPrCreated: false` is expected; real-network PR publication remains untested.
+
+The subsequent [publication milestone](runbooks/test-publication.md) adds a
+target-bound, separate automation-repository command and a synthetic end-to-end
+publication demo. Its 16 publisher cases and 3 additional PostgreSQL cases are
+included in the current totals above. Use that runbook for the new lane; existing
+plans without an explicit automation destination need a new plan and approval.
 
 ## 13. M8 — Monitoring, budgets, retention and recovery
 

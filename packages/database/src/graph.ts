@@ -122,13 +122,88 @@ export class PostgresGraphStore {
       `select d.dependency,(v.is_current and r.revoked_at is null) as valid from dependencies d join source_versions v on v.id=d.source_version_id join source_records r on r.id=v.source_record_id where d.organisation_id=$1 and d.repository_id=$2 and d.feature_id=$3 and d.active`,
       [scope.organisationId, scope.repositoryId, featureId],
     );
-    return evaluateReadiness(
-      feature.head_sha,
-      feature.dependencies_complete,
-      rows.rows.map((row) => ({
-        ...DependencySchema.parse(row.dependency),
-        valid: row.valid,
-      })),
+    return {
+      appSha: feature.head_sha,
+      ...evaluateReadiness(
+        feature.head_sha,
+        feature.dependencies_complete,
+        rows.rows.map((row) => ({
+          ...DependencySchema.parse(row.dependency),
+          valid: row.valid,
+        })),
+      ),
+    };
+  }
+  // Shared exact source versions link assessments to candidate features. This is
+  // evidence association, not permission to act or proof of complete inventory.
+  async assessmentFeatures(scope: Scope, assessmentId: string) {
+    ScopeSchema.parse(scope);
+    const features = await this.pool.query<{
+      id: string;
+      feature_key: string;
+      head_sha: string;
+      dependencies_complete: boolean;
+    }>(
+      `select f.id,f.feature_key,f.head_sha,f.dependencies_complete from features f
+      where f.organisation_id=$1 and f.repository_id=$2 and (
+        exists(select 1 from test_plans p where p.organisation_id=$1 and p.repository_id=$2 and p.assessment_id=$3 and p.feature_id=f.id)
+        or exists(select 1 from dependencies d join report_sources rs on rs.source_version_id=d.source_version_id
+          where d.feature_id=f.id and d.organisation_id=$1 and d.repository_id=$2 and rs.organisation_id=$1 and rs.repository_id=$2 and rs.assessment_id=$3)
+      ) order by f.feature_key limit 10`,
+      [scope.organisationId, scope.repositoryId, assessmentId],
+    );
+    return Promise.all(
+      features.rows.map(async (feature) => {
+        const rows = await this.pool.query<{
+          dependency: unknown;
+          revision: number;
+          actor: string;
+          created_at: Date;
+          valid: boolean;
+          revoked: boolean;
+          assessment_source: string | null;
+        }>(
+          `select d.dependency,d.revision,d.actor,d.created_at,(v.is_current and s.revoked_at is null) as valid,s.revoked_at is not null as revoked,
+        (select a.task #>> '{source,id}' from assessments a join assessment_reports r on r.assessment_id=a.id
+          where a.organisation_id=$1 and a.repository_id=$2 and r.created_at<=d.created_at
+          and not exists(select 1 from report_sources rs join source_versions sv on sv.id=rs.source_version_id join source_records sr on sr.id=sv.source_record_id where rs.assessment_id=a.id and sr.revoked_at is not null)
+          and exists(select 1 from report_sources rs join dependencies linked on linked.source_version_id=rs.source_version_id where rs.assessment_id=a.id and linked.feature_id=$3)
+          order by r.created_at desc,a.id desc limit 1) as assessment_source
+        from dependencies d join source_versions v on v.id=d.source_version_id join source_records s on s.id=v.source_record_id
+        where d.organisation_id=$1 and d.repository_id=$2 and d.feature_id=$3 order by d.created_at,d.id limit 201`,
+          [scope.organisationId, scope.repositoryId, feature.id],
+        );
+        const complete =
+          rows.rows.length <= 200 && !rows.rows.some((row) => row.revoked);
+        const inputs = new Map<string, Dependency & { valid: boolean }>();
+        const history = complete
+          ? rows.rows.map((row) => {
+              const dependency = DependencySchema.parse(row.dependency);
+              inputs.set(dependency.key, { ...dependency, valid: row.valid });
+              return {
+                dependency,
+                revision: row.revision,
+                actor: row.actor,
+                recordedAt: row.created_at.toISOString(),
+                assessmentSource: row.assessment_source,
+                readiness: evaluateReadiness(
+                  feature.head_sha,
+                  feature.dependencies_complete,
+                  [...inputs.values()],
+                ),
+              };
+            })
+          : [];
+        return {
+          id: feature.id,
+          key: feature.feature_key,
+          appSha: feature.head_sha,
+          history,
+          historyNote: complete
+            ? 'Reconstructed from persisted dependency revisions using the current feature target, inventory completeness and source validity. PR labels identify the latest linked analysis before each change, not proof that the PR caused it. Historical target/inventory decisions were not snapshotted.'
+            : 'History unavailable: revoked source access or more than 200 dependency revisions. No partial reconstruction is shown.',
+        };
+      }),
     );
   }
   async revokeSource(scope: Scope, sourceKey: string): Promise<string[]> {

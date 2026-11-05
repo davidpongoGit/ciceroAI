@@ -225,3 +225,126 @@ is only in ignored runtime-data/demo.env. The demo leaves a real-publication pla
 awaiting product-level review and creates a local patch/manifest instead of a PR.
 Further work should close the explicit environment/integration gates and validate a
 representative pilot before claiming a production or fully autonomous product.
+
+## Readiness display milestone
+
+Date: 5 November 2026. Scope: one local dashboard/evidence milestone, requested
+after founder testing. No publisher or repository-write capability was added.
+
+The existing dashboard shows the requirement, PR identity and full assessed
+application revision alongside a plain-language test-readiness verdict. Inspect
+shows separate code, feature, environment and data dimensions, specific blockers,
+recorded run origin/result/revisions/environment/assertion hashes and explicit
+unavailable execution or unmeasured coverage states. `assessment_ready` is labelled
+as completed analysis; it does not imply testability, execution or verification.
+Readiness alone grants no execution authority. A feature targeting another SHA
+does not establish readiness for an earlier assessment. Failed readiness reads
+produce an unknown state rather than falling back to analysis status.
+
+The existing feature-readiness endpoint is reused and now includes its evaluated
+application SHA. Authenticated report responses add candidate features linked by
+exact shared source versions or an existing plan, bounded dependency history and
+up to 20 recorded runs. These reads retain installation scope and report/source
+access checks. Revoked dependency sources suppress reconstructed history. There
+are no new dependencies, schema migrations or outbound provider calls.
+
+Observed browser inspection through the normal `http://127.0.0.1:3000/` token
+entry point, against the existing synthetic demo, confirmed:
+
+- Requirement: “Reject expired cards”; current assessed revision has testable
+  prerequisites and a recorded Playwright pass labelled synthetic.
+- Persisted revision history includes code-blocked states after PR #101 and
+  #102 analysis, code-ready/environment-blocked state after PR #103 analysis,
+  and readiness after deployment/flag/data prerequisites are satisfied.
+- Coverage remains `not measured`; earlier assessed builds do not inherit the
+  later feature target's readiness. No browser page errors occurred.
+- Screenshots: ignored `artifacts/readiness-demo.png` and
+  `artifacts/readiness-demo-history.png`; the first was visually inspected.
+
+Historical feature target and inventory-completeness decisions were not
+snapshotted. The UI therefore labels history **reconstructed**, replays persisted
+dependency revisions with the current target/inventory/source validity, and
+explains that PR labels identify the latest linked analysis before each change,
+not causality or a captured historical verdict. History above 200 revisions is
+explicitly unavailable rather than partially reconstructed. No dates or outcomes
+are read from the convenience demo summary to populate the UI.
+
+Checks observed: `npm run check` exited 0 (format, lint, strict typecheck,
+48 unit/transport tests, build); database helper `test` exited 0 (15 PostgreSQL
+tests); database helper `e2e` exited 0 (3 browser tests). The added browser
+regression traverses code/environment/readiness states while analysis remains
+complete, tests missing and seeded synthetic run display, checks a changed target
+and an unavailable readiness endpoint. Its seeded pass is display-fixture evidence;
+the separate existing execution test still observes real fixed/broken browser runs.
+API integration checks include cross-scope and revoked-source denials.
+
+Publication boundary: application code, developer PRs/MRs and requirements are
+read inputs. Future Cai VCS writes must be test-only PRs/MRs in a separately
+configured Playwright automation repository, with developer review/approval/merge
+in the VCS. Separate-repository publishing enforcement and live VCS integration
+remain a later milestone; the existing synthetic publisher contract does not prove
+that gate. No commit, push, merge or external repository write was performed here.
+
+## Separate automation-repository publication milestone
+
+Date: 5 November 2026. Implements the next bounded publishing lane after the
+readiness display. The code supports an explicit GitHub test-proposal command;
+the demonstrated end-to-end path uses synthetic VCS transport only.
+
+`TestPlan.publication` binds the separate automation repository ID/name, base
+branch/SHA and exact new `tests/**/*.spec.ts` path into the approved plan hash.
+Application scope/SHA, test-content revision and automation base SHA remain
+distinct. The publisher checks configured/remote target identity, matching
+approval, source freshness, registered draft ownership/checksum, meaningful static
+assertion, immutable file/blob identity, one added file/commit and draft PR
+identity. It rechecks approval/base before writes, never updates default refs or
+application files, and does not merge, reopen closed PRs or update existing tests.
+
+The worker publication service uses PostgreSQL approvals and governance events
+plus the scoped artifact adapter for receipts. Receipts identify mode, target,
+application/test provenance, plan hash, result and recorded run origins; missing
+execution stays explicit. Lost commit/PR responses and receipt-storage failure
+reconcile via the same plan branch on retry. Legacy destination-less publication
+plans remain readable but cannot be newly approved or published. No new database
+migration or dependency was added.
+
+Commands added: `npm run demo:publish` (synthetic only) and
+`npm run publish:test -- <plan-id> <draft-artifact-id>` (explicitly configured live
+command). The Windows helper's `publish` action runs the synthetic demo. Live
+configuration defaults off in `.env.example`; the command has no approval-granting
+capability and dashboard approval does not publish. Destination information is
+visible before approval; legacy plans explain the need for replacement.
+
+Observed checks:
+
+- `npm run check`: exit 0; formatting, lint, strict typecheck, **63 unit/transport
+  tests** and build passed. Sixteen publisher cases include wrong/same repository,
+  changed destination/content, traversal, no-op assertions, moved base, revoked
+  approval, extra application files, uncertain writes and closed proposals.
+- `powershell -NoProfile -File scripts/local-postgres.ps1 test`: exit 0;
+  **7 files / 18 real PostgreSQL tests**, including three new publication cases
+  for approval, receipt/audit scope, destination changes, source revocation and
+  storage-failure reconciliation. VCS responses are simulated.
+- `powershell -NoProfile -File scripts/local-postgres.ps1 e2e`: exit 0;
+  **3 browser tests**, including visible automation destination and approval/
+  revocation through normal dashboard entry.
+- `powershell -NoProfile -File scripts/local-postgres.ps1 publish`: exit 0;
+  actual owned Playwright pass, independent application repo 101 / automation repo
+  202, exactly three in-memory VCS writes, repeat reconciliation without extra
+  writes, scoped receipts and `realPrCreated: false`.
+- Normal `http://127.0.0.1:3000/` browser inspection: destination shown, synthetic
+  pass retained, no page errors or outbound VCS request. Authenticated receipt
+  download matched its catalog SHA-256 and recorded the synthetic run origin.
+  Screenshot: ignored `artifacts/publication-target.png`.
+- Direct CLI with `PUBLISH_ENABLED=false`: expected exit 1 before configuration/
+  provider access. Credentials/runtime artifacts stay ignored; foundation
+  documents unchanged. Existing generated demo files were copied into an ignored
+  preservation directory before reseeding; previous DB scopes remain intact.
+
+The current total is **84 passing software tests**, not verified requirements.
+The demo API is left running against the latest synthetic scope. No live GitHub
+publication, GitLab MR, protected-branch/installation permission test, automated
+merge, untrusted execution, commit or push occurred. Live token/race/concurrency
+behaviour and CI compatibility in an authorised personal automation repository
+remain the next integration gate. See [ADR 0005](adr/0005-separate-automation-publication.md)
+and the [publication runbook](runbooks/test-publication.md).

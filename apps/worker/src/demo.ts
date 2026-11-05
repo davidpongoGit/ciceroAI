@@ -6,6 +6,8 @@ import type { Principal, TestPlan, Dependency } from '@cai/contracts';
 import { createDatabase, readDatabaseUrl } from '@cai/database';
 import {
   SyntheticSourceProvider,
+  SyntheticAutomationRepository,
+  GitHubDraftPublisher,
   type PullRequestSource,
   type IssueSource,
 } from '@cai/integrations';
@@ -20,6 +22,7 @@ import {
 import { assertionHash, criterionHash, inventoryFile } from '@cai/coverage';
 import { planHash } from '@cai/policy';
 import { processAnalysisOne } from './analysis.js';
+import { publishApprovedTest } from './publication.js';
 
 async function demo(): Promise<void> {
   const url = new URL(readDatabaseUrl(process.env.DATABASE_URL));
@@ -321,6 +324,14 @@ async function demo(): Promise<void> {
       ...execution,
       id: randomUUID(),
       operation: 'create_pr',
+      publication: {
+        provider: 'github',
+        repositoryId: '202',
+        repository: 'synthetic/playwright',
+        baseBranch: 'main',
+        baseSha: 'e'.repeat(40),
+        path: draft.path,
+      },
     };
     await database.plans.create(principal, publication);
     const review = {
@@ -347,6 +358,42 @@ async function demo(): Promise<void> {
       },
     );
     await database.artifacts.register(principal, finalAssessmentId, reviewRef);
+    let publicationResult = null;
+    if (process.argv.includes('--publish-synthetic')) {
+      if (!publication.publication)
+        throw new Error('Expected automation target.');
+      const remote = new SyntheticAutomationRepository(publication.publication);
+      const publisher = new GitHubDraftPublisher(
+        {
+          scope,
+          applicationRepository: 'synthetic/demo',
+          automationRepository: publication.publication,
+          installationToken: 'synthetic-in-memory-token',
+          approvedExternalWrites: true,
+        },
+        remote.transport,
+      );
+      await database.plans.decide(principal, publication.id, 'approved');
+      const input = {
+        database,
+        principal,
+        planId: publication.id,
+        draftArtifactId: codeRef.id,
+        store,
+        publisher,
+        mode: 'synthetic' as const,
+      };
+      const first = await publishApprovedTest(input);
+      const repeat = await publishApprovedTest(input);
+      if (remote.writes.length !== 3 || !repeat.receipt.result.reused)
+        throw new Error('Synthetic publication did not reconcile.');
+      publicationResult = {
+        ...first.receipt,
+        receiptArtifactId: first.reference.id,
+        reconciliationReceiptArtifactId: repeat.reference.id,
+        simulatedWrites: remote.writes.length,
+      };
+    }
     await database.monitor.reconcile(principal);
     const backup = await database.lifecycle.exportScope(principal);
     await mkdir('runtime-data', { recursive: true });
@@ -388,6 +435,7 @@ async function demo(): Promise<void> {
           stages,
           browserEvidence: result.evidence,
           review,
+          publication: publicationResult,
           usage: await database.actions.usage(principal),
           backupChecksum: backup.checksum,
         },
@@ -407,6 +455,14 @@ async function demo(): Promise<void> {
           browserOutcome: result.evidence.outcome,
           evidenceOrigin: result.evidence.origin,
           realPrCreated: false,
+          syntheticPublication: publicationResult
+            ? {
+                status: publicationResult.status,
+                simulatedWrites: publicationResult.simulatedWrites,
+                reconciled: true,
+                receiptArtifactId: publicationResult.receiptArtifactId,
+              }
+            : null,
         },
         null,
         2,

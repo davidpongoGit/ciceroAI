@@ -188,4 +188,17 @@ export class PostgresCoverageStore {
       };
     });
   }
+
+  async recordedRuns(
+    scope: Scope,
+    assessmentId: string,
+  ): Promise<RunEvidence[]> {
+    ScopeSchema.parse(scope);
+    if (!(await this.knowledge.getReport(scope, assessmentId))) return [];
+    const rows = await this.pool.query<{ evidence: unknown }>(
+      'select evidence from run_evidence where organisation_id=$1 and repository_id=$2 and assessment_id=$3 order by created_at desc,id desc limit 20',
+      [scope.organisationId, scope.repositoryId, assessmentId],
+    );
+    return rows.rows.map((row) => RunEvidenceSchema.parse(row.evidence));
+  }
 }

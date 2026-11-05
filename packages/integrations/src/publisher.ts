@@ -2,11 +2,15 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   ScopeSchema,
+  PublicationTargetSchema,
   TestPlanSchema,
+  RunEvidenceSchema,
   type Scope,
+  type PublicationTarget,
   type TestPlan,
+  type RunEvidence,
 } from '@cai/contracts';
-import { safeRepositoryPath } from '@cai/coverage';
+import { inventoryFile } from '@cai/coverage';
 import { planHash, PolicyDenied } from '@cai/policy';
 import {
   boundedJson,
@@ -18,34 +22,76 @@ import {
 const RefSchema = z.object({
   object: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/) }),
 });
+const RepoSchema = z.object({
+  id: z.number().int().positive(),
+  full_name: z.string(),
+});
 const PrSchema = z.object({
   number: z.number().int().positive(),
   html_url: z.url(),
-  head: z.object({ ref: z.string() }),
-  base: z.object({ ref: z.string() }),
+  state: z.enum(['open', 'closed']),
+  draft: z.boolean(),
+  merged_at: z.string().nullable(),
+  head: z.object({ ref: z.string(), sha: z.string(), repo: RepoSchema }),
+  base: z.object({ ref: z.string(), sha: z.string(), repo: RepoSchema }),
 });
+export interface PublicationConfig {
+  scope: Scope;
+  applicationRepository: string;
+  automationRepository: Pick<
+    PublicationTarget,
+    'repositoryId' | 'repository' | 'baseBranch'
+  >;
+  installationToken: string;
+  approvedExternalWrites: true;
+}
+export interface PublicationRequest {
+  plan: TestPlan;
+  content: string;
+  provenance: string[];
+  executionEvidence?: RunEvidence[];
+  authorize: () => Promise<TestPlan>;
+}
+export interface PublicationResult {
+  number: number;
+  url: string;
+  branch: string;
+  headSha: string;
+  reused: boolean;
+}
 export class GitHubDraftPublisher {
+  private readonly config: PublicationConfig;
   private readonly root: string;
   private readonly headers: Record<string, string>;
   constructor(
-    private readonly config: {
-      scope: Scope;
-      repository: string;
-      baseBranch: string;
-      installationToken: string;
-      approvedExternalWrites: true;
-    },
+    config: PublicationConfig,
     private readonly transport: FetchTransport = fetch,
   ) {
-    ScopeSchema.parse(config.scope);
+    const scope = ScopeSchema.parse(config.scope);
+    const target = PublicationTargetSchema.pick({
+      repositoryId: true,
+      repository: true,
+      baseBranch: true,
+    }).parse({
+      repositoryId: config.automationRepository.repositoryId,
+      repository: config.automationRepository.repository,
+      baseBranch: config.automationRepository.baseBranch,
+    });
+    const applicationRepository =
+      PublicationTargetSchema.shape.repository.parse(
+        config.applicationRepository,
+      );
     if (
       !z.literal(true).safeParse(config.approvedExternalWrites).success ||
-      !/^[\w.-]+\/[\w.-]+$/.test(config.repository) ||
-      !/^[A-Za-z0-9_-]{1,100}$/.test(config.baseBranch) ||
-      !config.installationToken
+      !config.applicationRepository ||
+      target.repositoryId === scope.repositoryId ||
+      target.repository.toLowerCase() === applicationRepository.toLowerCase() ||
+      !config.installationToken ||
+      config.installationToken.includes('CHANGE_ME')
     )
       throw new PolicyDenied();
-    this.root = `https://api.github.com/repos/${config.repository}`;
+    this.config = { ...config, scope, automationRepository: target };
+    this.root = `https://api.github.com/repos/${target.repository}`;
     this.headers = {
       Authorization: `Bearer ${config.installationToken}`,
       Accept: 'application/vnd.github+json',
@@ -53,27 +99,69 @@ export class GitHubDraftPublisher {
       'content-type': 'application/json',
     };
   }
-  async publish(input: {
-    plan: TestPlan;
-    path: string;
-    content: string;
-    provenance: string[];
-    authorize: () => Promise<TestPlan>;
-  }) {
+  async publish(input: PublicationRequest): Promise<PublicationResult> {
     const plan = TestPlanSchema.parse(input.plan);
+    const target = plan.publication;
+    const configured = this.config.automationRepository;
     const expectedHash = createHash('sha256')
       .update(input.content)
       .digest('hex');
+    const gitBlobSha = createHash('sha1')
+      .update(`blob ${String(Buffer.byteLength(input.content))}\0`)
+      .update(input.content)
+      .digest('hex');
     if (
+      !target ||
       plan.scope.organisationId !== this.config.scope.organisationId ||
       plan.scope.repositoryId !== this.config.scope.repositoryId ||
       plan.operation !== 'create_pr' ||
       plan.strategy !== 'create' ||
+      plan.level !== 'e2e' ||
       plan.draftHash !== expectedHash ||
-      !safeRepositoryPath(input.path) ||
-      !input.path.startsWith('tests/') ||
-      !input.path.endsWith('.spec.ts') ||
-      Buffer.byteLength(input.content) > 100_000
+      target.repositoryId !== configured.repositoryId ||
+      target.repository.toLowerCase() !== configured.repository.toLowerCase() ||
+      target.baseBranch !== configured.baseBranch ||
+      Buffer.byteLength(input.content) > 100_000 ||
+      !z
+        .array(
+          z
+            .string()
+            .min(1)
+            .max(1000)
+            .regex(/^[^\r\n]+$/),
+        )
+        .min(1)
+        .max(100)
+        .safeParse(input.provenance).success
+    )
+      throw new PolicyDenied();
+    const tests = inventoryFile(
+      plan.scope,
+      target.path,
+      input.content,
+      plan.testRevisionSha,
+    );
+    if (
+      !tests.some(
+        (test) =>
+          !test.skipped &&
+          test.assertions.some((assertion) => assertion.supported),
+      )
+    )
+      throw new PolicyDenied();
+    const evidence = z
+      .array(RunEvidenceSchema)
+      .max(20)
+      .parse(input.executionEvidence ?? []);
+    if (
+      evidence.some(
+        (run) =>
+          run.scope.organisationId !== plan.scope.organisationId ||
+          run.scope.repositoryId !== plan.scope.repositoryId ||
+          run.appSha !== plan.appSha ||
+          run.testRevisionSha !== plan.testRevisionSha ||
+          run.fileHash !== expectedHash,
+      )
     )
       throw new PolicyDenied();
     const branch = `cai/${plan.id}`;
@@ -89,8 +177,19 @@ export class GitHubDraftPublisher {
         throw error;
       }
     };
-    const guard = async (): Promise<void> => {
+    const guard = async () => {
       if (planHash(await input.authorize()) !== planHash(plan))
+        throw new PolicyDenied();
+    };
+    const repoMatches = (repo: z.infer<typeof RepoSchema>) =>
+      String(repo.id) === target.repositoryId &&
+      repo.full_name.toLowerCase() === target.repository.toLowerCase();
+    const checkTarget = async () => {
+      if (
+        !repoMatches(RepoSchema.parse(await get(''))) ||
+        RefSchema.parse(await get(`/git/ref/heads/${target.baseBranch}`)).object
+          .sha !== target.baseSha
+      )
         throw new PolicyDenied();
     };
     const write = async (
@@ -98,6 +197,9 @@ export class GitHubDraftPublisher {
       endpoint: string,
       body: unknown,
     ): Promise<unknown> => {
+      // Recheck the independent automation base and exact approval before every
+      // write. No application repository request or default-branch write exists.
+      await checkTarget();
       await guard();
       let response: Response;
       try {
@@ -123,61 +225,86 @@ export class GitHubDraftPublisher {
       }
       return boundedJson(response);
     };
+    const filePath = `/contents/${target.path.split('/').map(encodeURIComponent).join('/')}`;
+    const verifyPr = (
+      value: unknown,
+      headSha: string,
+      reused: boolean,
+    ): PublicationResult => {
+      const pr = PrSchema.parse(value);
+      const url = `https://github.com/${target.repository}/pull/${String(pr.number)}`;
+      if (
+        !repoMatches(pr.head.repo) ||
+        !repoMatches(pr.base.repo) ||
+        pr.head.ref !== branch ||
+        pr.head.sha !== headSha ||
+        pr.base.ref !== target.baseBranch ||
+        pr.base.sha !== target.baseSha ||
+        pr.state !== 'open' ||
+        !pr.draft ||
+        pr.merged_at !== null ||
+        pr.html_url.toLowerCase() !== url.toLowerCase()
+      )
+        throw new PolicyDenied();
+      return { number: pr.number, url, branch, headSha, reused };
+    };
     await guard();
-    const repo = z
-      .object({ id: z.number().int().positive() })
-      .parse(await get(''));
-    if (String(repo.id) !== plan.scope.repositoryId) throw new PolicyDenied();
-    const base = RefSchema.parse(
-      await get(`/git/ref/heads/${this.config.baseBranch}`),
-    );
-    if (base.object.sha !== plan.appSha) throw new PolicyDenied();
-    const branchRef = await optionalGet(`/git/ref/heads/${branch}`);
-    if (!branchRef)
+    await checkTarget();
+    // New test only. Never overwrite an existing test or other automation file.
+    if (await optionalGet(`${filePath}?ref=${target.baseSha}`))
+      throw new PolicyDenied();
+    if (!(await optionalGet(`/git/ref/heads/${branch}`)))
       await write('POST', '/git/refs', {
         ref: `refs/heads/${branch}`,
-        sha: plan.appSha,
+        sha: target.baseSha,
       });
-    const fileEndpoint = `/contents/${input.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
-    let file = await optionalGet(fileEndpoint);
-    if (!file) {
-      const writable = RefSchema.parse(await get(`/git/ref/heads/${branch}`));
-      if (writable.object.sha !== plan.appSha) throw new PolicyDenied();
-      await write(
-        'PUT',
-        `/contents/${input.path.split('/').map(encodeURIComponent).join('/')}`,
-        {
-          message: `Cai approved test plan ${plan.id}`,
-          content: Buffer.from(input.content).toString('base64'),
-          branch,
-        },
-      );
-      file = await get(fileEndpoint);
+    let current = RefSchema.parse(await get(`/git/ref/heads/${branch}`)).object
+      .sha;
+    if (!(await optionalGet(`${filePath}?ref=${current}`))) {
+      if (current !== target.baseSha) throw new PolicyDenied();
+      await write('PUT', filePath, {
+        message: `Cai approved test plan ${plan.id}`,
+        content: Buffer.from(input.content).toString('base64'),
+        branch,
+      });
+      current = RefSchema.parse(await get(`/git/ref/heads/${branch}`)).object
+        .sha;
     }
-    const stored = z
+    const file = z
       .object({
+        type: z.literal('file'),
         encoding: z.literal('base64'),
         content: z.string().max(200_000),
       })
-      .parse(file);
+      .parse(await get(`${filePath}?ref=${current}`));
     if (
       createHash('sha256')
-        .update(Buffer.from(stored.content.replace(/\s/g, ''), 'base64'))
+        .update(Buffer.from(file.content.replace(/\s/g, ''), 'base64'))
         .digest('hex') !== expectedHash
     )
       throw new PolicyDenied();
-    const current = RefSchema.parse(await get(`/git/ref/heads/${branch}`));
     const diff = z
       .object({
+        status: z.literal('ahead'),
+        ahead_by: z.literal(1),
+        behind_by: z.literal(0),
+        total_commits: z.literal(1),
         files: z
-          .array(z.object({ filename: z.string(), status: z.string() }))
-          .max(1),
+          .array(
+            z.object({
+              filename: z.string(),
+              status: z.literal('added'),
+              sha: z.string(),
+            }),
+          )
+          .length(1),
       })
-      .parse(await get(`/compare/${plan.appSha}...${current.object.sha}`));
+      .parse(await get(`/compare/${target.baseSha}...${current}`));
+    const changedFile = diff.files[0];
     if (
-      diff.files.length !== 1 ||
-      diff.files[0]?.filename !== input.path ||
-      diff.files[0].status !== 'added'
+      !changedFile ||
+      changedFile.filename !== target.path ||
+      changedFile.sha !== gitBlobSha
     )
       throw new PolicyDenied();
     const existing = z
@@ -185,43 +312,38 @@ export class GitHubDraftPublisher {
       .max(100)
       .parse(
         await get(
-          `/pulls?state=all&head=${encodeURIComponent(`${this.config.repository.split('/')[0] ?? ''}:${branch}`)}`,
+          `/pulls?state=all&head=${encodeURIComponent(`${target.repository.split('/')[0] ?? ''}:${branch}`)}&base=${encodeURIComponent(target.baseBranch)}&per_page=100`,
         ),
       );
-    const prior = existing.find(
-      (pr) => pr.head.ref === branch && pr.base.ref === this.config.baseBranch,
-    );
-    if (prior)
-      return {
-        number: prior.number,
-        url: prior.html_url,
-        branch,
-        reused: true,
-      };
+    await checkTarget();
+    await guard();
+    if (existing.length > 1) throw new PolicyDenied();
+    if (existing[0]) return verifyPr(existing[0], current, true);
+    // Immutable commit reads above qualify the proposal; refuse a concurrently
+    // edited branch instead of publishing another actor's edits.
     if (
-      RefSchema.parse(await get(`/git/ref/heads/${this.config.baseBranch}`))
-        .object.sha !== plan.appSha
+      RefSchema.parse(await get(`/git/ref/heads/${branch}`)).object.sha !==
+      current
     )
       throw new PolicyDenied();
-    const created = PrSchema.parse(
-      await write('POST', '/pulls', {
-        title: `Cai: reviewed regression coverage (${plan.id.slice(0, 8)})`,
-        head: branch,
-        base: this.config.baseBranch,
-        draft: true,
-        body: `Plan: ${plan.id}\nPlan hash: ${planHash(plan)}\nDraft checksum: ${expectedHash}\n\nSources:\n${input.provenance.map((source) => `- ${source}`).join('\n')}\n\nGenerated test draft. Execution evidence must be reviewed separately. No merge is requested.`,
-      }),
-    );
-    if (
-      created.head.ref !== branch ||
-      created.base.ref !== this.config.baseBranch
-    )
-      throw new PolicyDenied();
-    return {
-      number: created.number,
-      url: created.html_url,
-      branch,
-      reused: false,
+    const proposal = {
+      title: `Cai: regression coverage (${plan.id.slice(0, 8)})`,
+      head: branch,
+      base: target.baseBranch,
+      draft: true,
+      body: `Cai test-only proposal. Developer review, approval and merge remain in the VCS.\n\nPlan: ${plan.id}\nPlan hash: ${planHash(plan)}\nApplication repository: ${this.config.applicationRepository} (read-only, ID ${plan.scope.repositoryId})\nAssessed application SHA: ${plan.appSha}\nAutomation repository: ${target.repository} (ID ${target.repositoryId})\nAutomation base: ${target.baseBranch}@${target.baseSha}\nPlanned test content revision: ${plan.testRevisionSha}\nDraft SHA-256: ${expectedHash}\n\nSource/version references:\n${input.provenance.map((source) => `- ${source}`).join('\n')}\n\nThis publication does not establish verified coverage. Review execution evidence and environment suitability separately. No application code, workflow configuration or existing test is changed. No merge is requested.`,
     };
+    proposal.body +=
+      '\n\nRecorded execution evidence (not verified coverage):\n' +
+      (evidence.length
+        ? evidence
+            .map(
+              (run) =>
+                `- ${run.id}: ${run.outcome}; ${run.origin}; environment ${run.environment}; finished ${run.finishedAt}`,
+            )
+            .join('\n')
+        : 'Execution evidence unavailable.');
+    const created = await write('POST', '/pulls', proposal);
+    return verifyPr(created, current, false);
   }
 }

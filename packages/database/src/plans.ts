@@ -59,6 +59,8 @@ export class PostgresPlanStore {
     }
   }
   private async currentSources(plan: TestPlan): Promise<void> {
+    if (plan.operation === 'create_pr' && !plan.publication)
+      throw new PolicyDenied();
     const report = await this.knowledge.getReport(
       plan.scope,
       plan.assessmentId,
@@ -221,6 +223,27 @@ export class PostgresPlanStore {
     ).rows;
     return Promise.all(ids.map((row) => this.get(principal, row.id)));
   }
+  async publicationEvent(
+    principal: Principal,
+    planId: string,
+    event: 'started' | 'recorded' | 'failed',
+    receiptId?: string,
+  ): Promise<void> {
+    requireCapability(principal, principal.scope, 'create_pr');
+    const result = await this.pool.query(
+      `insert into governance_events (organisation_id,repository_id,actor,action,target_id)
+      select organisation_id,repository_id,$4,$5,$6 from test_plans where organisation_id=$1 and repository_id=$2 and id=$3 returning id`,
+      [
+        principal.scope.organisationId,
+        principal.scope.repositoryId,
+        planId,
+        principal.id,
+        `publication_${event}`,
+        receiptId ?? planId,
+      ],
+    );
+    if (result.rowCount !== 1) throw new PolicyDenied();
+  }
   async overview(principal: Principal) {
     requireCapability(principal, principal.scope, 'assessment.read');
     const scope: Scope = principal.scope;
@@ -253,8 +276,9 @@ export class PostgresPlanStore {
         stale: boolean;
         head_sha: string;
         state: string;
+        source_id: string;
       }>(
-        `select r.assessment_id,r.stale,a.head_sha,r.report->>'state' as state from assessment_reports r join assessments a on a.id=r.assessment_id where r.organisation_id=$1 and r.repository_id=$2 order by r.created_at desc limit 100`,
+        `select r.assessment_id,r.stale,a.head_sha,a.task #>> '{source,id}' as source_id,r.report->>'state' as state from assessment_reports r join assessments a on a.id=r.assessment_id where r.organisation_id=$1 and r.repository_id=$2 order by r.created_at desc limit 100`,
         [scope.organisationId, scope.repositoryId],
       )
     ).rows;
